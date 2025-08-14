@@ -1,0 +1,820 @@
+import React, { useMemo, useState, useEffect } from "react";
+
+// --- Helper types ---
+type Ingredient = {
+  name: string;
+  qty: number; // numeric quantity in the given unit (per 1 serving)
+  unit: string; // e.g., oz, cup, pcs, g
+  category:
+    | "Protein"
+    | "Veggies"
+    | "Carbs & Wraps"
+    | "Canned & Pantry"
+    | "Sauces & Seasonings"
+    | "Dairy & Other";
+};
+
+type Meal = {
+  id: string;
+  title: string;
+  kcal: number; // per serving
+  protein_g: number; // per serving
+  tags: string[]; // cuisine / method / vibe
+  steps: string[];
+  volumeTip?: string;
+  ingredients: Ingredient[]; // per serving
+};
+
+// --- Base data: 10 meals tailored to Jonathan (no pasta, no heavy tomato, shrimp/zoodles removed) ---
+const BASE_MEALS: Meal[] = [
+  {
+    id: "m1",
+    title: "Buffalo Chicken Spring Rolls",
+    kcal: 380,
+    protein_g: 38,
+    tags: ["air fryer", "fusion", "spicy"],
+    steps: [
+      "Mix cooked shredded chicken with buffalo sauce.",
+      "Soften rice paper wrappers in warm water.",
+      "Fill with chicken and slaw, roll tightly.",
+      "Air fry 375°F for 4–5 minutes (light oil spray).",
+      "Stir Greek yogurt with ranch seasoning for dip.",
+    ],
+    volumeTip: "Add extra cabbage for crunch at near-zero calories.",
+    ingredients: [
+      { name: "Chicken breast (cooked, shredded)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Rice paper wrappers", qty: 3, unit: "pcs", category: "Carbs & Wraps" },
+      { name: "Coleslaw mix (cabbage+carrot)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Buffalo sauce (sugar-free)", qty: 2, unit: "tbsp", category: "Sauces & Seasonings" },
+      { name: "Greek yogurt (nonfat)", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+      { name: "Ranch seasoning", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "m2",
+    title: "Chicken Fajita Bowls",
+    kcal: 420,
+    protein_g: 39,
+    tags: ["stovetop", "mex", "high volume"],
+    steps: [
+      "Sauté chicken with fajita seasoning until cooked.",
+      "Add sliced peppers and onions; cook to tender-crisp.",
+      "Microwave or sauté cauliflower rice.",
+      "Serve chicken and veg over cauli rice with black beans.",
+    ],
+    volumeTip: "Swap half the beans for more peppers for even bigger volume.",
+    ingredients: [
+      { name: "Chicken breast (strips)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Cauliflower rice", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Black beans (drained)", qty: 0.5, unit: "cup", category: "Canned & Pantry" },
+      { name: "Fajita seasoning", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "m3",
+    title: "Loaded Chicken & Potato Bowl",
+    kcal: 450,
+    protein_g: 42,
+    tags: ["air fryer", "comfort", "spicy"],
+    steps: [
+      "Air fry potato cubes at 400°F for 15–18 minutes.",
+      "Sauté chicken with peppers and onions until cooked.",
+      "Plate potatoes, top with chicken and veg; drizzle yogurt+hot sauce.",
+    ],
+    volumeTip: "Smaller potato cubes = visually larger portion.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Potatoes (cubed)", qty: 200, unit: "g", category: "Carbs & Wraps" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Greek yogurt (nonfat)", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+      { name: "Hot sauce", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "m4",
+    title: "Turkey Sausage & Veggie Skillet (over herbed rice)",
+    kcal: 390,
+    protein_g: 35,
+    tags: ["stovetop", "savory"],
+    steps: [
+      "Slice and brown turkey sausage.",
+      "Add broccoli, peppers, onions; stir-fry until tender.",
+      "Serve over cooked jasmine rice seasoned with herbs.",
+    ],
+    volumeTip: "Double the broccoli for +100g food at ~30 kcal.",
+    ingredients: [
+      { name: "Turkey sausage (lean)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Broccoli florets", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Jasmine rice (cooked)", qty: 0.5, unit: "cup", category: "Carbs & Wraps" },
+      { name: "Italian herbs", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "m5",
+    title: "Buffalo Ranch Chicken Stuffed Peppers",
+    kcal: 400,
+    protein_g: 39,
+    tags: ["oven", "spicy", "high volume"],
+    steps: [
+      "Mix shredded chicken, cauliflower rice, buffalo sauce, and cheese.",
+      "Stuff halved bell peppers and bake at 375°F for ~20 minutes.",
+    ],
+    volumeTip: "Add chopped spinach into the filling for extra bulk.",
+    ingredients: [
+      { name: "Chicken breast (cooked, shredded)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Cauliflower rice", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Bell peppers (halved)", qty: 2, unit: "pcs", category: "Veggies" },
+      { name: "Buffalo sauce", qty: 2, unit: "tbsp", category: "Sauces & Seasonings" },
+      { name: "Light mozzarella", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+      { name: "Spinach (chopped)", qty: 0.5, unit: "cup", category: "Veggies" },
+    ],
+  },
+  {
+    id: "m6",
+    title: "Chicken & Veggie Quesadillas",
+    kcal: 420,
+    protein_g: 37,
+    tags: ["stovetop", "mex", "wrap"],
+    steps: [
+      "Sauté peppers, onions, spinach, and chicken.",
+      "Fill high-fiber wrap with mixture and cheese; fold.",
+      "Air fry or pan-sear until crispy.",
+    ],
+    volumeTip: "Split filling across two wraps to double perceived size.",
+    ingredients: [
+      { name: "High-fiber wrap", qty: 1, unit: "pcs", category: "Carbs & Wraps" },
+      { name: "Chicken breast (cooked, shredded)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Bell peppers (sliced)", qty: 0.75, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Spinach", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Light mozzarella", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+      { name: "Salsa (low tomato)", qty: 2, unit: "tbsp", category: "Canned & Pantry" },
+      { name: "Greek yogurt (nonfat)", qty: 2, unit: "tbsp", category: "Dairy & Other" },
+    ],
+  },
+  {
+    id: "m7",
+    title: "Egg Roll in a Bowl",
+    kcal: 390,
+    protein_g: 38,
+    tags: ["stovetop", "asian", "high volume"],
+    steps: [
+      "Brown ground turkey with garlic and ginger.",
+      "Add coleslaw mix and soy sauce; cook until tender.",
+      "Top with Greek yogurt + sriracha drizzle.",
+    ],
+    volumeTip: "Add extra shredded cabbage to boost size further.",
+    ingredients: [
+      { name: "Ground turkey (lean)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Coleslaw mix", qty: 2, unit: "cup", category: "Veggies" },
+      { name: "Soy sauce (low sodium)", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+      { name: "Garlic (minced)", qty: 1, unit: "clove", category: "Veggies" },
+      { name: "Ginger (grated)", qty: 1, unit: "tsp", category: "Veggies" },
+      { name: "Greek yogurt (nonfat)", qty: 1, unit: "tbsp", category: "Dairy & Other" },
+      { name: "Sriracha", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "m8",
+    title: "Sweet Chili Chicken Stir-Fry",
+    kcal: 420,
+    protein_g: 40,
+    tags: ["stovetop", "asian", "sweet-heat"],
+    steps: [
+      "Sauté chicken until golden.",
+      "Add broccoli, peppers, onions; stir-fry to tender.",
+      "Toss with sweet chili sauce and serve over rice.",
+    ],
+    volumeTip: "Use 1 cup broccoli + 1 cup peppers to up the bulk.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Broccoli florets", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Jasmine rice (cooked)", qty: 0.5, unit: "cup", category: "Carbs & Wraps" },
+      { name: "Sweet chili sauce (sugar-free)", qty: 2, unit: "tbsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "m9",
+    title: "Cheesy Chicken Pizza Wrap (Tomato-Free)",
+    kcal: 380,
+    protein_g: 37,
+    tags: ["air fryer", "pizza", "wrap"],
+    steps: [
+      "Spread garlic, chopped chicken, spinach, mozzarella, and herbs on wrap.",
+      "Fold and air fry 375°F for 5–6 minutes until crispy.",
+      "Optional drizzle: buffalo or white garlic sauce.",
+    ],
+    volumeTip: "Add chopped peppers or onions inside to bulk it up.",
+    ingredients: [
+      { name: "High-fiber wrap", qty: 1, unit: "pcs", category: "Carbs & Wraps" },
+      { name: "Chicken breast (cooked, chopped)", qty: 3, unit: "oz", category: "Protein" },
+      { name: "Light mozzarella", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+      { name: "Garlic (minced)", qty: 1, unit: "clove", category: "Veggies" },
+      { name: "Italian herbs", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+      { name: "Spinach", qty: 0.5, unit: "cup", category: "Veggies" },
+    ],
+  },
+  {
+    id: "m10",
+    title: "Herby Chicken & Spinach Rice Skillet",
+    kcal: 400,
+    protein_g: 38,
+    tags: ["stovetop", "comfort", "herby"],
+    steps: [
+      "Sauté chicken with garlic and herbs until cooked.",
+      "Add peppers, onions, spinach until tender.",
+      "Serve over rice; sprinkle mozzarella.",
+    ],
+    volumeTip: "Double the spinach for bulk with minimal calories.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Spinach", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Jasmine rice (cooked)", qty: 0.5, unit: "cup", category: "Carbs & Wraps" },
+      { name: "Italian herbs", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+      { name: "Light mozzarella", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+    ],
+  },
+];
+
+// --- Alternative meals pool for replacements (similar ingredients, budget-friendly, non-tangy) ---
+const ALT_MEALS: Meal[] = [
+  {
+    id: "a1",
+    title: "Chipotle-Lime (no lime) Chicken Burrito Bowl",
+    kcal: 410,
+    protein_g: 40,
+    tags: ["stovetop", "mex", "bowl"],
+    steps: [
+      "Sauté chicken with chipotle chili and garlic.",
+      "Add peppers and onions until tender.",
+      "Serve over cauliflower rice with a spoon of black beans.",
+    ],
+    volumeTip: "Extra peppers/onions to boost size instead of more beans.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Cauliflower rice", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Black beans (drained)", qty: 0.33, unit: "cup", category: "Canned & Pantry" },
+      { name: "Chipotle chili powder", qty: 0.5, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "a2",
+    title: "Garlic-Parmesan Chicken Potato Skillet",
+    kcal: 460,
+    protein_g: 42,
+    tags: ["stovetop", "comfort"],
+    steps: [
+      "Air fry potato cubes.",
+      "Sauté chicken with garlic; fold in spinach.",
+      "Toss together with light parmesan-style cheese.",
+    ],
+    volumeTip: "Add extra spinach for near-zero calories.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Potatoes (cubed)", qty: 200, unit: "g", category: "Carbs & Wraps" },
+      { name: "Spinach", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Garlic (minced)", qty: 1, unit: "clove", category: "Veggies" },
+      { name: "Light mozzarella or parmesan", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+    ],
+  },
+  {
+    id: "a3",
+    title: "Pesto Chicken Wrap (Tomato-Free)",
+    kcal: 390,
+    protein_g: 36,
+    tags: ["wrap", "herby"],
+    steps: [
+      "Spread light pesto on wrap.",
+      "Add chicken, spinach, onions; sprinkle mozzarella.",
+      "Air fry or pan-sear until crisp.",
+    ],
+    volumeTip: "Bulk with peppers/onions inside the wrap.",
+    ingredients: [
+      { name: "High-fiber wrap", qty: 1, unit: "pcs", category: "Carbs & Wraps" },
+      { name: "Chicken breast (cooked)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Spinach", qty: 0.75, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.25, unit: "cup", category: "Veggies" },
+      { name: "Light pesto", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+      { name: "Light mozzarella", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+    ],
+  },
+  {
+    id: "a4",
+    title: "Spicy Sesame Chicken Rice Bowl",
+    kcal: 430,
+    protein_g: 40,
+    tags: ["stovetop", "asian", "spicy"],
+    steps: [
+      "Sauté chicken; add soy, garlic, and a touch of honey or zero-cal sweetener.",
+      "Stir in peppers and onions.",
+      "Serve over jasmine rice; sprinkle sesame seeds.",
+    ],
+    volumeTip: "Half rice, half cauliflower rice for bigger bowls.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Jasmine rice (cooked)", qty: 0.5, unit: "cup", category: "Carbs & Wraps" },
+      { name: "Bell peppers (sliced)", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Soy sauce (low sodium)", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+      { name: "Sesame seeds", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "a5",
+    title: "BBQ Chicken Cauli-Rice Bowl",
+    kcal: 410,
+    protein_g: 39,
+    tags: ["stovetop", "bbq", "high volume"],
+    steps: [
+      "Sauté chicken with smoky paprika and garlic.",
+      "Fold in cauliflower rice and spinach.",
+      "Finish with a small drizzle of sugar-free BBQ sauce.",
+    ],
+    volumeTip: "Go 1.5–2 cups cauli rice to super-size the bowl.",
+    ingredients: [
+      { name: "Chicken breast", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Cauliflower rice", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Spinach", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Smoked paprika", qty: 0.5, unit: "tsp", category: "Sauces & Seasonings" },
+      { name: "Sugar-free BBQ sauce", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "a6",
+    title: "Breakfast-for-Dinner Egg White Scramble + Turkey Sausage",
+    kcal: 360,
+    protein_g: 36,
+    tags: ["stovetop", "breakfast", "high volume"],
+    steps: [
+      "Brown turkey sausage; set aside.",
+      "Scramble egg whites with peppers, onions, and spinach.",
+      "Serve with hot sauce.",
+    ],
+    volumeTip: "Extra egg whites massively increase volume with low kcal.",
+    ingredients: [
+      { name: "Egg whites", qty: 8, unit: "tbsp", category: "Protein" },
+      { name: "Turkey sausage (lean)", qty: 3, unit: "oz", category: "Protein" },
+      { name: "Bell peppers (diced)", qty: 0.75, unit: "cup", category: "Veggies" },
+      { name: "Onion (diced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Spinach", qty: 1, unit: "cup", category: "Veggies" },
+      { name: "Hot sauce", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+    ],
+  },
+  {
+    id: "a7",
+    title: "Fajita-Style Stuffed Potatoes",
+    kcal: 470,
+    protein_g: 39,
+    tags: ["air fryer", "mex", "comfort"],
+    steps: [
+      "Air fry or bake whole potato until tender.",
+      "Top with sautéed chicken fajita mix and a sprinkle of cheese.",
+      "Dollop Greek yogurt for creaminess.",
+    ],
+    volumeTip: "Use smaller diced chicken for more bites per spoon.",
+    ingredients: [
+      { name: "Potato (medium)", qty: 1, unit: "pcs", category: "Carbs & Wraps" },
+      { name: "Chicken breast (diced)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Bell peppers (sliced)", qty: 0.75, unit: "cup", category: "Veggies" },
+      { name: "Onion (sliced)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Light mozzarella", qty: 0.25, unit: "cup", category: "Dairy & Other" },
+      { name: "Greek yogurt (nonfat)", qty: 2, unit: "tbsp", category: "Dairy & Other" },
+    ],
+  },
+  {
+    id: "a8",
+    title: "Gochujang Chicken Lettuce Wraps",
+    kcal: 380,
+    protein_g: 37,
+    tags: ["stovetop", "asian", "spicy"],
+    steps: [
+      "Brown ground chicken with garlic; stir in gochujang and soy.",
+      "Spoon into crunchy romaine leaves with cucumber sticks.",
+      "Sprinkle sesame seeds.",
+    ],
+    volumeTip: "Add shredded cabbage into the pan to double volume.",
+    ingredients: [
+      { name: "Ground chicken (lean)", qty: 4, unit: "oz", category: "Protein" },
+      { name: "Gochujang", qty: 1, unit: "tbsp", category: "Sauces & Seasonings" },
+      { name: "Soy sauce (low sodium)", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+      { name: "Romaine leaves", qty: 4, unit: "pcs", category: "Veggies" },
+      { name: "Cucumber (sticks)", qty: 0.5, unit: "cup", category: "Veggies" },
+      { name: "Sesame seeds", qty: 1, unit: "tsp", category: "Sauces & Seasonings" },
+    ],
+  },
+];
+
+const ALL_MEALS: Record<string, Meal> = Object.fromEntries(
+  [...BASE_MEALS, ...ALT_MEALS].map((m) => [m.id, m])
+);
+
+// --- Utilities ---
+const CATEGORIES: Ingredient["category"][] = [
+  "Protein",
+  "Veggies",
+  "Carbs & Wraps",
+  "Canned & Pantry",
+  "Sauces & Seasonings",
+  "Dairy & Other",
+];
+
+function groupAndSum(ingredients: Ingredient[]) {
+  const key = (i: Ingredient) => `${i.name}__${i.unit}__${i.category}`;
+  const map = new Map<string, Ingredient>();
+  for (const ing of ingredients) {
+    const k = key(ing);
+    const cur = map.get(k);
+    if (cur) {
+      map.set(k, { ...cur, qty: cur.qty + ing.qty });
+    } else {
+      map.set(k, { ...ing });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function useLocalStorage<T>(key: string, initial: T) {
+  const [state, setState] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch {}
+  }, [key, state]);
+  return [state, setState] as const;
+}
+
+function pickReplacement(forMeal: Meal, currentIds: string[]): Meal | null {
+  // try to find an alt meal sharing a tag that's not already in plan and not vetoed
+  const used = new Set(currentIds);
+  const byTag = ALT_MEALS.filter(
+    (m) => !used.has(m.id) && m.tags.some((t) => forMeal.tags.includes(t))
+  );
+  if (byTag.length) return byTag[0];
+  const any = ALT_MEALS.find((m) => !used.has(m.id));
+  return any || null;
+}
+
+export default function App() {
+  // Plan = ordered list of meal IDs currently in the plan (starts with BASE_MEALS)
+  const [planIds, setPlanIds] = useLocalStorage<string[]>(
+    "planIds",
+    BASE_MEALS.map((m) => m.id)
+  );
+  const [vetoed, setVetoed] = useLocalStorage<string[]>("vetoedMeals", []);
+  const [activeTab, setActiveTab] = useLocalStorage<string>("tab", "plan");
+  const [servings, setServings] = useLocalStorage<number>("servings", 1);
+  const [showNutrition, setShowNutrition] = useLocalStorage<boolean>(
+    "showNutrition",
+    true
+  );
+
+  const planMeals: Meal[] = useMemo(() => planIds.map((id) => ALL_MEALS[id]).filter(Boolean), [planIds]);
+  const includedMeals = planMeals.filter((m) => !vetoed.includes(m.id));
+
+  // Nutrition totals (simple: kcal + protein only)
+  const totalKcal = useMemo(
+    () => includedMeals.reduce((sum, m) => sum + m.kcal * servings, 0),
+    [includedMeals, servings]
+  );
+  const totalProtein = useMemo(
+    () => includedMeals.reduce((sum, m) => sum + m.protein_g * servings, 0),
+    [includedMeals, servings]
+  );
+
+  // Aggregated grocery list from included meals, scaled by servings
+  const groceryByCategory = useMemo(() => {
+    const flat = includedMeals.flatMap((m) =>
+      m.ingredients.map((ing) => ({ ...ing, qty: ing.qty * servings }))
+    );
+    const grouped = groupAndSum(flat);
+    const byCat = new Map<Ingredient["category"], Ingredient[]>();
+    for (const c of CATEGORIES) byCat.set(c, []);
+    for (const ing of grouped) {
+      const arr = byCat.get(ing.category) ?? [];
+      arr.push(ing);
+      byCat.set(ing.category, arr);
+    }
+    for (const c of CATEGORIES) {
+      byCat.set(
+        c,
+        (byCat.get(c) || []).sort((a, b) => a.name.localeCompare(b.name))
+      );
+    }
+    return byCat;
+  }, [includedMeals, servings]);
+
+  const vetoToggle = (id: string) => {
+    setVetoed((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  };
+
+  const includeAll = () => setVetoed([]);
+  const vetoAll = () => setVetoed(planIds);
+
+  const replaceMeal = (id: string) => {
+    const current = ALL_MEALS[id];
+    if (!current) return;
+    const replacement = pickReplacement(current, planIds);
+    setVetoed((v) => (v.includes(id) ? v : [...v, id]));
+    if (replacement) {
+      setPlanIds((ids) => {
+        const idx = ids.indexOf(id);
+        if (idx === -1) return ids;
+        const next = [...ids];
+        // Only insert replacement if it's not already in plan
+        if (!next.includes(replacement.id)) {
+          next.splice(idx + 1, 0, replacement.id);
+        }
+        return next;
+      });
+    }
+  };
+
+  const copyList = async () => {
+    const lines: string[] = [];
+    lines.push(`Servings multiplier: x${servings}`);
+    if (showNutrition) {
+      lines.push(`Planned totals: ${Math.round(totalKcal)} kcal, ${Math.round(totalProtein)} g protein`);
+    }
+    lines.push("");
+    CATEGORIES.forEach((cat) => {
+      const items = groceryByCategory.get(cat) || [];
+      if (items.length) {
+        lines.push(`**${cat}**`);
+        items.forEach((i) => {
+          lines.push(`- ${i.name}: ${i.qty} ${i.unit}`);
+        });
+        lines.push("");
+      }
+    });
+    const text = lines.join("
+");
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Grocery list copied to clipboard!");
+    } catch (e) {
+      alert("Couldn't copy automatically. Scroll Grocery tab to select+copy.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-50 text-neutral-900">
+      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
+        <div className="max-w-5xl mx-auto px-4 py-3 grid gap-3 md:flex md:items-center md:justify-between">
+          <h1 className="text-xl sm:text-2xl font-semibold">Jonathan’s Meal Planner</h1>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 border rounded-2xl px-3 py-1.5 bg-white">
+              <span>Servings</span>
+              <select
+                className="outline-none"
+                value={servings}
+                onChange={(e) => setServings(parseInt(e.target.value || "1"))}
+              >
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    x{n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 border rounded-2xl px-3 py-1.5 bg-white cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-neutral-900"
+                checked={showNutrition}
+                onChange={(e) => setShowNutrition(e.target.checked)}
+              />
+              <span>Show nutrition</span>
+            </label>
+            <button
+              onClick={includeAll}
+              className="px-3 py-1.5 rounded-2xl bg-green-600 text-white hover:bg-green-700"
+              title="Include all meals"
+            >
+              Include All
+            </button>
+            <button
+              onClick={vetoAll}
+              className="px-3 py-1.5 rounded-2xl bg-rose-600 text-white hover:bg-rose-700"
+              title="Veto all meals"
+            >
+              Veto All
+            </button>
+          </div>
+        </div>
+        <nav className="max-w-5xl mx-auto px-4 pb-2">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { key: "plan", label: "Plan (Veto/Replace)" },
+              { key: "grocery", label: "Grocery List" },
+              { key: "recipes", label: "Recipes" },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={
+                  "px-3 py-2 rounded-2xl border " +
+                  (activeTab === t.key
+                    ? "bg-neutral-900 text-white border-neutral-900"
+                    : "bg-white hover:bg-neutral-100")
+                }
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+        {showNutrition && (
+          <div className="max-w-5xl mx-auto px-4 pb-3 text-sm text-neutral-700">
+            <span className="font-medium">Plan totals (x{servings}):</span> {Math.round(totalKcal)} kcal · {Math.round(totalProtein)} g protein
+          </div>
+        )}
+      </header>
+
+      {/* Content */}
+      <main className="max-w-5xl mx-auto px-4 py-6">
+        {activeTab === "plan" && (
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm text-neutral-600">
+                Included: <span className="font-semibold">{includedMeals.length}</span>/{planMeals.length} • Vetoed: {vetoed.length}
+              </p>
+              <p className="text-sm text-neutral-600">Click a card to include/exclude, or use <span className="font-medium">Veto & Replace</span>.</p>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              {planMeals.map((meal) => {
+                const excluded = vetoed.includes(meal.id);
+                return (
+                  <div
+                    key={meal.id}
+                    className={
+                      "rounded-2xl border p-4 transition shadow-sm " +
+                      (excluded ? "opacity-50 border-rose-300" : "hover:shadow border-neutral-200")
+                    }
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <button onClick={() => vetoToggle(meal.id)} className="text-left">
+                          <h3 className="text-lg font-semibold">{meal.title}</h3>
+                          {showNutrition && (
+                            <div className="mt-1 text-xs text-neutral-600 flex flex-wrap gap-2">
+                              <span>{meal.kcal} kcal</span>
+                              <span>• {meal.protein_g}g protein</span>
+                              <span>• {meal.tags.join(" · ")}</span>
+                            </div>
+                          )}
+                          {!showNutrition && (
+                            <div className="mt-1 text-xs text-neutral-600 flex flex-wrap gap-2">
+                              <span>{meal.tags.join(" · ")}</span>
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span
+                          className={
+                            "px-2 py-1 rounded-full text-xs " +
+                            (excluded
+                              ? "bg-rose-100 text-rose-700 border border-rose-200"
+                              : "bg-green-100 text-green-700 border border-green-200")
+                          }
+                        >
+                          {excluded ? "Vetoed" : "Included"}
+                        </span>
+                        <button
+                          onClick={() => replaceMeal(meal.id)}
+                          className="px-3 py-1.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-xs"
+                          title="Veto this meal and insert a similar replacement"
+                        >
+                          Veto & Replace
+                        </button>
+                      </div>
+                    </div>
+                    {meal.volumeTip && (
+                      <p className="mt-3 text-sm text-neutral-700">
+                        <span className="font-medium">Volume tip:</span> {meal.volumeTip}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "grocery" && (
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Grocery List (auto-updates)</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={copyList}
+                  className="px-3 py-1.5 rounded-2xl bg-neutral-900 text-white hover:bg-neutral-800"
+                >
+                  Copy to Clipboard
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded-2xl bg-white border hover:bg-neutral-100"
+                >
+                  Print
+                </button>
+              </div>
+            </div>
+            {CATEGORIES.map((cat) => {
+              const items = groceryByCategory.get(cat) || [];
+              if (!items.length) return null;
+              return (
+                <div key={cat} className="mb-6">
+                  <h3 className="text-base font-semibold mb-2">{cat}</h3>
+                  <ul className="space-y-1 text-sm">
+                    {items.map((i, idx) => (
+                      <li key={`${i.name}-${idx}`} className="flex items-center gap-2">
+                        <input type="checkbox" className="accent-neutral-900" />
+                        <span>
+                          {i.name}: <span className="font-medium">{i.qty}</span> {i.unit}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </section>
+        )}
+
+        {activeTab === "recipes" && (
+          <section>
+            <h2 className="text-lg font-semibold mb-4">Recipe Cards</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              {includedMeals.map((meal) => (
+                <article key={meal.id} className="rounded-2xl border p-4 shadow-sm">
+                  <div className="flex items-start justify-between">
+                    <h3 className="text-lg font-semibold">{meal.title}</h3>
+                    {showNutrition && (
+                      <div className="text-xs text-neutral-600 text-right">
+                        <div>{meal.kcal} kcal / serving</div>
+                        <div>{meal.protein_g}g protein / serving</div>
+                        <div>×{servings} = {meal.kcal * servings} kcal, {meal.protein_g * servings}g protein</div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-2">
+                    <h4 className="text-sm font-medium">Ingredients (x{servings})</h4>
+                    <ul className="mt-1 text-sm list-disc ml-5 space-y-1">
+                      {meal.ingredients.map((ing, i) => (
+                        <li key={i}>
+                          {ing.name} — {ing.qty * servings} {ing.unit}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-3">
+                    <h4 className="text-sm font-medium">Steps</h4>
+                    <ol className="mt-1 text-sm list-decimal ml-5 space-y-1">
+                      {meal.steps.map((s, i) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  {meal.volumeTip && (
+                    <p className="mt-3 text-sm text-neutral-700">
+                      <span className="font-medium">Volume tip:</span> {meal.volumeTip}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+
+      <footer className="max-w-5xl mx-auto px-4 pb-10 text-xs text-neutral-500">
+        <hr className="my-6" />
+        <p>
+          Built for Jonathan • Low-calorie, high-volume dinners • Veto & Replace, servings multiplier, and nutrition toggle are saved locally.
+        </p>
+      </footer>
+    </div>
+  );
+}
